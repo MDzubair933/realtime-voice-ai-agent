@@ -4,13 +4,13 @@ import React, { useEffect, useRef } from "react";
 
 interface VoiceVisualizerProps {
   isActive: boolean;
-  isSpeaking: boolean;
+  volume: number; // 0.0 to 1.0 real-time audio energy
   mode: "listening" | "thinking" | "speaking" | "idle";
 }
 
 export const VoiceVisualizer: React.FC<VoiceVisualizerProps> = ({
   isActive,
-  isSpeaking,
+  volume,
   mode,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -23,44 +23,68 @@ export const VoiceVisualizer: React.FC<VoiceVisualizerProps> = ({
 
     let animationFrameId: number;
     let phase = 0;
+    let smoothedVol = 0;
 
     const render = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       const centerX = canvas.width / 2;
       const centerY = canvas.height / 2;
-      const baseRadius = 80;
+
+      // Smooth volume transitions
+      smoothedVol += (volume - smoothedVol) * 0.15;
+      const baseRadius = 75 + smoothedVol * 45;
 
       // Color scheme based on active state
-      let primaryColor = "rgba(99, 102, 241, 0.8)"; // Indigo
-      let secondaryColor = "rgba(168, 85, 247, 0.5)"; // Purple
+      let primaryColor = "rgba(99, 102, 241, 0.9)"; // Indigo
+      let secondaryColor = "rgba(168, 85, 247, 0.6)"; // Purple
+      let coreGlow = "rgba(99, 102, 241, 0.35)";
 
       if (mode === "speaking") {
-        primaryColor = "rgba(59, 130, 246, 0.9)"; // Cyan/Blue
-        secondaryColor = "rgba(147, 51, 234, 0.7)";
+        primaryColor = "rgba(56, 189, 248, 0.95)"; // Sky blue
+        secondaryColor = "rgba(168, 85, 247, 0.8)";
+        coreGlow = "rgba(56, 189, 248, 0.4)";
       } else if (mode === "thinking") {
-        primaryColor = "rgba(234, 179, 8, 0.8)"; // Yellow/Amber
-        secondaryColor = "rgba(249, 115, 22, 0.5)";
+        primaryColor = "rgba(251, 191, 36, 0.9)"; // Gold
+        secondaryColor = "rgba(249, 115, 22, 0.7)";
+        coreGlow = "rgba(251, 191, 36, 0.3)";
       } else if (mode === "listening") {
-        primaryColor = "rgba(34, 197, 94, 0.8)"; // Emerald
-        secondaryColor = "rgba(16, 185, 129, 0.5)";
+        primaryColor = "rgba(52, 211, 153, 0.95)"; // Emerald
+        secondaryColor = "rgba(14, 165, 233, 0.7)";
+        coreGlow = "rgba(52, 211, 153, 0.4)";
       }
 
-      // Draw multi-layered organic oscillating waves
-      const waves = 4;
+      // Draw glowing central orb core
+      const coreGradient = ctx.createRadialGradient(
+        centerX,
+        centerY,
+        10,
+        centerX,
+        centerY,
+        baseRadius * 0.8
+      );
+      coreGradient.addColorStop(0, coreGlow);
+      coreGradient.addColorStop(1, "transparent");
+
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, baseRadius * 0.85, 0, Math.PI * 2);
+      ctx.fillStyle = coreGradient;
+      ctx.fill();
+
+      // Draw multi-layered organic oscillating sound waves
+      const waves = 5;
       for (let w = 0; w < waves; w++) {
         ctx.beginPath();
-        const numPoints = 120;
+        const numPoints = 140;
         const waveOffset = (w * Math.PI) / waves;
+        const currentAmp = isActive ? 10 + smoothedVol * 50 : 2;
 
         for (let i = 0; i <= numPoints; i++) {
           const angle = (i / numPoints) * Math.PI * 2;
-          const amp = isActive ? (isSpeaking ? 16 : 8) : 2;
-          const noise =
-            Math.sin(angle * 5 + phase + waveOffset) *
-            Math.cos(angle * 3 - phase) *
-            amp;
-          const r = baseRadius + noise + w * 6;
+          const harmonic1 = Math.sin(angle * 4 + phase + waveOffset * 2);
+          const harmonic2 = Math.cos(angle * 3 - phase * 0.8);
+          const noise = (harmonic1 + harmonic2 * 0.5) * currentAmp;
+          const r = baseRadius + noise + w * 4;
           const x = centerX + Math.cos(angle) * r;
           const y = centerY + Math.sin(angle) * r;
 
@@ -73,11 +97,11 @@ export const VoiceVisualizer: React.FC<VoiceVisualizerProps> = ({
 
         ctx.closePath();
         ctx.strokeStyle = w % 2 === 0 ? primaryColor : secondaryColor;
-        ctx.lineWidth = 2.5;
+        ctx.lineWidth = 2.2 + smoothedVol * 1.5;
         ctx.stroke();
       }
 
-      phase += isActive ? 0.04 : 0.01;
+      phase += isActive ? 0.04 + smoothedVol * 0.08 : 0.015;
       animationFrameId = requestAnimationFrame(render);
     };
 
@@ -86,20 +110,26 @@ export const VoiceVisualizer: React.FC<VoiceVisualizerProps> = ({
     return () => {
       cancelAnimationFrame(animationFrameId);
     };
-  }, [isActive, isSpeaking, mode]);
+  }, [isActive, volume, mode]);
 
   return (
-    <div className="relative flex items-center justify-center w-72 h-72">
-      {/* Outer ambient glow */}
+    <div className="relative flex items-center justify-center w-80 h-80 my-2">
+      {/* Dynamic ambient backdrop glow */}
       <div
-        className={`absolute inset-0 rounded-full blur-2xl transition-all duration-700 ${
-          isActive ? "glow-active bg-indigo-500/20" : "glow-orb bg-indigo-500/10"
+        className={`absolute inset-0 rounded-full blur-3xl transition-all duration-500 pointer-events-none ${
+          isActive
+            ? mode === "speaking"
+              ? "bg-sky-500/25 scale-110"
+              : mode === "thinking"
+              ? "bg-amber-500/20 scale-105"
+              : "bg-emerald-500/25 scale-110"
+            : "bg-indigo-500/10 scale-90"
         }`}
       />
       <canvas
         ref={canvasRef}
-        width={300}
-        height={300}
+        width={360}
+        height={360}
         className="relative z-10 w-full h-full"
       />
     </div>
